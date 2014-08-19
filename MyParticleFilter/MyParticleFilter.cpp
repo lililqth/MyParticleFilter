@@ -16,6 +16,9 @@ const int R_SHIFT = 5;
 const int B_SHIFT = 5;
 const int G_SHIFT = 5;
 
+const int H_BIN = 10;
+const int S_BIN = 9;
+
 const int NParticle = 100;// 粒子的个数
 const int Num = 10;		//帧差的间隔
 const int T = 40;		//Tf
@@ -75,6 +78,44 @@ void clearAll()
 	}
 }
 
+void Rgb2Hsv(float R, float G, float B, float& H, float& S, float&V)  
+{  
+     // r,g,b values are from 0 to 1   
+    // h = [0,360], s = [0,1], v = [0,1]   
+    // if s == 0, then h = -1 (undefined)   
+    float min, max, delta,tmp;  
+    tmp = R>G?G:R;  
+    min = tmp>B?B:tmp;  
+    tmp = R>G?R:G;  
+    max = tmp>B?tmp:B;  
+    V = max; // v   
+    delta = max - min;  
+    if( max != 0 )  
+        S = delta / max; // s   
+    else  
+    {  
+        // r = g = b = 0 // s = 0, v is undefined   
+        S = 0;  
+        H = 0;  
+        return;  
+    }  
+    if (delta == 0){  
+        H = 0;  
+        return;  
+    }  
+    else if(R == max){  
+        if (G >= B)  
+            H = (G - B) / delta; // between yellow & magenta   
+        else  
+            H = (G - B) / delta + 6.0;  
+    }  
+    else if( G == max )  
+        H = 2.0 + ( B - R ) / delta; // between cyan & yellow   
+    else if (B == max)  
+        H = 4.0 + ( R - G ) / delta; // between magenta & cyan   
+    H *= 60.0; // degrees   
+} 
+
 void calcuColorHistogram( int x0, int y0, int Wx, int Hy, 
 						 unsigned char * image, int W, int H,
 						 float * ColorHist, int bins )
@@ -99,10 +140,18 @@ void calcuColorHistogram( int x0, int y0, int Wx, int Hy,
 	{
 		for(int i = xBegin; i <= xEnd; i++)
 		{
-			r = image[(j * W + i) * 3] >> R_SHIFT;
+			/*r = image[(j * W + i) * 3] >> R_SHIFT;
 			g = image[(j * W + i) * 3 + 1] >> G_SHIFT;
-			b = image[(j * W + i) * 3 + 2] >> B_SHIFT;
-			int index = r*G_BIN * B_BIN + g * B_BIN + b;
+			b = image[(j * W + i) * 3 + 2] >> B_SHIFT;*/
+			r = image[(j * W + i) * 3];
+			g = image[(j * W + i) * 3 + 1];
+			b = image[(j * W + i) * 3 + 2];
+			float H, S, V;
+			Rgb2Hsv(r, g, b, H, S, V);
+			H = (int)(H / 40);
+			S = (int)(S * 8);
+			//int index = r*G_BIN * B_BIN + g * B_BIN + b;
+			int index = H * S_BIN + S;			
 			float r2 = (float)(((j-y0)*(j-y0)+(i-x0)*(i-x0))*1.0/a2);
 			float k = 1 - r2;
 			f = f + k;
@@ -161,10 +210,6 @@ float randGaussian( float u, float sigma )
 	{
 		x1 = rand0_1();
 		x2 = rand0_1();
-		/*x1 = rand();
-		x2 = rand();
-		x1 = x1 / RAND_MAX;
-		x2 = x2 / RAND_MAX;*/
 		v1 = 2 * x1 - 1;
 		v2 = 2 * x2 - 1;
 		s = v1*v1 + v2*v2;
@@ -221,12 +266,12 @@ int initialize(int x0, int y0, int Wx, int Hy,
 {
 	float rn[7];
 	set_seed(0);
-//	srand((unsigned)time(0)); 
 	states = new SPACESTATE [NParticle];
 	assert(states != NULL);
 	weights = new float [NParticle];
 	assert(weights != NULL);
-	nbin = 8 * 8 * 8;//确定直方图条数
+//	nbin = 8 * 8 * 8;//确定直方图条数
+	nbin = H_BIN * S_BIN;
 	modelHist = new float[nbin];//申请直方图内存
 	assert(modelHist != NULL);
 
@@ -325,11 +370,11 @@ int N：                数组维数
 返回值：
 数组下标序号
 */
-int BinarySearch( float v, float * NCumuWeight, int N )
+int binarySearch( float v, float * NCumuWeight, int N )
 {
 	int low = 0, high = N - 1;
 	int n;
-	while (low < high)
+	while (low <= high)
 	{
 		n = (low + high) / 2;
 		if (NCumuWeight[n] <= v && NCumuWeight[n+1] > v)
@@ -375,8 +420,7 @@ void ImportanceSampling( float * c, int * ResampleIndex, int N )
 	for (int i=0; i<N; i++)
 	{
 		rnum = rand0_1();
-		//rnum = rand() / RAND_MAX;
-		int j = BinarySearch(rnum, cumulateWeight, N+1);
+		int j = binarySearch(rnum, cumulateWeight, N+1);
 		if(j == N)
 		{
 			j--;
@@ -627,7 +671,7 @@ int main(int argc, char *argv[])
 		cvSetMouseCallback("vedio", mouseHandler, 0);
 		if(pause)
 		{
-			cvWaitKey(400);
+			cvWaitKey(1000);
 		}
 		else
 		{
@@ -639,4 +683,3 @@ int main(int argc, char *argv[])
 	clearAll();
 	cvDestroyAllWindows();
 }
-
