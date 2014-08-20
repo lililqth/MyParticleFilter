@@ -7,7 +7,7 @@ using namespace cv;
 #define B(image,x,y) ((uchar*)(image->imageData + image->widthStep*(y)))[(x)*3]		//B
 #define G(image,x,y) ((uchar*)(image->imageData + image->widthStep*(y)))[(x)*3+1]	//G
 #define R(image,x,y) ((uchar*)(image->imageData + image->widthStep*(y)))[(x)*3+2]	//R
-#define ALPHA_COEFFICIENT      0.2													// 目标模型更新权重取0.1-0.3
+#define ALPHA_COEFFICIENT      0.3													// 目标模型更新权重取0.1-0.3
 
 const int G_BIN = 8;
 const int B_BIN = 8;
@@ -140,18 +140,18 @@ void calcuColorHistogram( int x0, int y0, int Wx, int Hy,
 	{
 		for(int i = xBegin; i <= xEnd; i++)
 		{
-			/*r = image[(j * W + i) * 3] >> R_SHIFT;
+			r = image[(j * W + i) * 3] >> R_SHIFT;
 			g = image[(j * W + i) * 3 + 1] >> G_SHIFT;
-			b = image[(j * W + i) * 3 + 2] >> B_SHIFT;*/
-			r = image[(j * W + i) * 3];
+			b = image[(j * W + i) * 3 + 2] >> B_SHIFT;
+		/*	r = image[(j * W + i) * 3];
 			g = image[(j * W + i) * 3 + 1];
 			b = image[(j * W + i) * 3 + 2];
 			float H, S, V;
 			Rgb2Hsv(r, g, b, H, S, V);
 			H = (int)(H / 40);
-			S = (int)(S * 8);
-			//int index = r*G_BIN * B_BIN + g * B_BIN + b;
-			int index = H * S_BIN + S;			
+			S = (int)(S * 8);*/
+			int index = r*G_BIN * B_BIN + g * B_BIN + b;
+			//int index = H * S_BIN + S;			
 			float r2 = (float)(((j-y0)*(j-y0)+(i-x0)*(i-x0))*1.0/a2);
 			float k = 1 - r2;
 			f = f + k;
@@ -164,33 +164,7 @@ void calcuColorHistogram( int x0, int y0, int Wx, int Hy,
 	}
 }
 
-const int IQ = 127773;
-const int IA = 16807;
-const int IR = 2836;
-const long IM = 2147483647;
-const float AM = 1.0 / IM;
-float ran0(long *idum)
-{
-	long k;
-	float ans;
 
-	/* *idum ^= MASK;*/      /* XORing with MASK allows use of zero and other */
-	k=(*idum)/IQ;            /* simple bit patterns for idum.                 */
-	*idum=IA*(*idum-k*IQ)-IR*k;  /* Compute idum=(IA*idum) % IM without over- */
-	if (*idum < 0) *idum += IM;  /* flows by Schrage’s method.               */
-	ans=AM*(*idum);          /* Convert idum to a floating result.            */
-	/* *idum ^= MASK;*/      /* Unmask before return.                         */
-	return ans;
-}
-
-
-/*
-获得一个[0,1]之间均匀分布的随机数
-*/
-float rand0_1()
-{
-	return( ran0( &ran_seed ) );
-}
 
 float randGaussian( float u, float sigma )
 {
@@ -208,8 +182,10 @@ float randGaussian( float u, float sigma )
 	*/
 	while ( s > 1.0 )
 	{
-		x1 = rand0_1();
-		x2 = rand0_1();
+		x1 = rand();
+		x2 = rand();
+		x1 = x1 / RAND_MAX;
+		x2 = x2 / RAND_MAX;
 		v1 = 2 * x1 - 1;
 		v2 = 2 * x2 - 1;
 		s = v1*v1 + v2*v2;
@@ -245,33 +221,17 @@ void propagate( SPACESTATE * state, int N )
 	return;
 }
 
-/*
-设置种子数
-一般利用系统时间来进行设置，也可以直接传入一个long型整数
-*/
-long set_seed( long setvalue )
-{
-	if ( setvalue != 0 ) /* 如果传入的参数setvalue!=0，设置该数为种子 */
-		ran_seed = setvalue;
-	else                 /* 否则，利用系统时间为种子数 */
-	{
-		ran_seed = time(NULL);
-	}
-	return( ran_seed );
-}
-
-
 int initialize(int x0, int y0, int Wx, int Hy, 
 			   unsigned char *img, int W, int H)
 {
 	float rn[7];
-	set_seed(0);
+	srand(unsigned(time(0)));
 	states = new SPACESTATE [NParticle];
 	assert(states != NULL);
 	weights = new float [NParticle];
 	assert(weights != NULL);
-//	nbin = 8 * 8 * 8;//确定直方图条数
-	nbin = H_BIN * S_BIN;
+	nbin = 8 * 8 * 8;//确定直方图条数
+//	nbin = H_BIN * S_BIN;
 	modelHist = new float[nbin];//申请直方图内存
 	assert(modelHist != NULL);
 
@@ -419,7 +379,8 @@ void ImportanceSampling( float * c, int * ResampleIndex, int N )
 
 	for (int i=0; i<N; i++)
 	{
-		rnum = rand0_1();
+		rnum = rand();
+		rnum = rnum / RAND_MAX;
 		int j = binarySearch(rnum, cumulateWeight, N+1);
 		if(j == N)
 		{
@@ -607,7 +568,7 @@ int colorParticleTracking(unsigned char * image, int W, int H
 	Hy_h = EState.Hyt;
 	//更新模型
 	modelUpdate(EState, modelHist, nbin, Pi_Thres, image, W, H);
-	// 计算最大权重值
+	// 计算最大相似度
 	maxWeight = weights[0];
 	for ( int i = 1; i < NParticle; i++ )
 		maxWeight = maxWeight < weights[i] ? weights[i] : maxWeight;
@@ -627,7 +588,8 @@ int colorParticleTracking(unsigned char * image, int W, int H
 int main(int argc, char *argv[])
 {
 	CvCapture *capture = 0;
-	capture = cvCaptureFromAVI("../13.avi");
+	//capture = cvCaptureFromAVI("../13.avi");
+	capture = cvCreateCameraCapture(0);
 	int row, col;
 	float similarity;		//相似度
 	float maxWeight;
@@ -653,7 +615,6 @@ int main(int argc, char *argv[])
 		maxWeight = 0.0;
 		if(track == true)
 		{
-			//maxWeight = 0.0;
 			similarity = colorParticleTracking( img, Wid, Hei, xOut, yOut, widOut, heiOut, maxWeight );
 			if(similarity > 0 && maxWeight > 0.0001)
 			{
